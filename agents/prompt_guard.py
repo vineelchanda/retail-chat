@@ -15,7 +15,10 @@ TWO LAYERS:
 
 import re
 import json
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 import google.generativeai as genai
 from config import GEMINI_API_KEY, GEMINI_MODEL
 
@@ -66,6 +69,7 @@ def check_patterns(query: str) -> Optional[str]:
     """Fast regex check for known injection patterns. Returns reason if blocked."""
     for pattern in COMPILED_PATTERNS:
         if pattern.search(query):
+            logger.warning("Prompt Guard: Blocked query due to pattern match: %s", pattern.pattern)
             return f"Blocked by pattern: {pattern.pattern}"
     return None
 

@@ -15,11 +15,15 @@ HOW IT CONNECTS:
 3. Chat history stored in st.session_state for conversation memory
 """
 
+import logging
 import streamlit as st
+from config import LANGCHAIN_PROJECT
 from data.loader import load_all_data
 from data.schema_info import get_schema_description
 from agents.graph import create_graph, run_query
 from prompts.templates import SUMMARIZATION_QUERY
+
+logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────
 # Page Configuration
@@ -34,12 +38,17 @@ st.set_page_config(
 # Initialize session state (runs once)
 # ──────────────────────────────────────
 if "initialized" not in st.session_state:
+    logger.info("Starting Retail Insights Assistant...")
     with st.spinner("Loading sales data into DuckDB..."):
         st.session_state.con = load_all_data()
+        logger.info("DuckDB data loaded successfully")
         st.session_state.schema_desc = get_schema_description(st.session_state.con)
+        logger.info("Schema description built")
         st.session_state.graph = create_graph()
+        logger.info("LangGraph workflow compiled")
         st.session_state.chat_history = []
         st.session_state.initialized = True
+    logger.info("App initialized and ready — LangSmith project: %s", LANGCHAIN_PROJECT)
 
 # ──────────────────────────────────────
 # Sidebar
@@ -96,6 +105,8 @@ if st.session_state.get("trigger_summary"):
     st.session_state.trigger_summary = False
 
 if user_input:
+    logger.info("User query received: %s", user_input)
+
     # Display user message
     with st.chat_message("user"):
         st.markdown(user_input)
@@ -113,6 +124,8 @@ if user_input:
                 db_connection=st.session_state.con,
                 schema_description=st.session_state.schema_desc,
             )
+
+        logger.info("Query processed — intent: %s, blocked: %s", result.get("intent", "N/A"), result.get("response", "")[:50])
 
         # Display response
         st.markdown(result["response"])
