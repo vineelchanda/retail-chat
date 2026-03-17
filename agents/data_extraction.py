@@ -20,10 +20,13 @@ KEY DESIGN DECISIONS:
 
 import re
 import json
+import logging
 from typing import Optional
 import google.generativeai as genai
 from config import GEMINI_API_KEY, GEMINI_MODEL
 from prompts.templates import DATA_EXTRACTION_PROMPT
+
+logger = logging.getLogger(__name__)
 
 genai.configure(api_key=GEMINI_API_KEY)
 
@@ -55,21 +58,42 @@ def data_extraction_agent(state: dict) -> dict:
             f"Please fix the query and try a different approach."
         )
 
+    # Format chat history for context on follow-up questions
+    history_text = ""
+    if state["input"].get("chat_history"):
+        for msg in state["input"]["chat_history"][-10:]:
+            role = msg["role"].capitalize()
+            history_text += f"{role}: {msg['content']}\n"
+
     prompt = DATA_EXTRACTION_PROMPT.format(
         schema_description=state["context"]["schema_description"],
         intent=state["parsed"]["intent"],
         entities=json.dumps(state["parsed"]["entities"]),
         user_query=state["input"]["user_query"],
         error_context=error_context,
+        chat_history=history_text or "No previous conversation.",
     )
 
-    # Call Gemini to generate SQL
-    response = model.generate_content(
-        prompt,
-        generation_config=genai.types.GenerationConfig(temperature=0),
-    )
+    try:
+        # Call Gemini to generate SQL
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(temperature=0),
+        )
 
-    sql_query = response.text.strip()
+        sql_query = response.text.strip()
+    except Exception as e:
+        logger.error("Gemini API call failed in data_extraction: %s", e)
+        return {
+            **state,
+            "result": {
+                **state["result"],
+                "sql_query": "",
+                "query_result": None,
+                "column_names": [],
+                "error": f"LLM call failed: {e}",
+            },
+        }
 
     # Clean up markdown code blocks if LLM wraps the SQL
     if sql_query.startswith("```"):

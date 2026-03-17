@@ -16,12 +16,51 @@ WHY VALIDATION MATTERS:
 - The retry loop gives the SQL agent a chance to self-correct using error feedback
 """
 
+import re
 import json
+import logging
 import google.generativeai as genai
 from config import GEMINI_API_KEY, GEMINI_MODEL, MAX_RETRIES
 from prompts.templates import VALIDATION_PROMPT
 
+logger = logging.getLogger(__name__)
 genai.configure(api_key=GEMINI_API_KEY)
+
+
+def _parse_json_safe(text: str) -> dict:
+    """Parse JSON from LLM response, handling extra data and malformed output."""
+    # Try direct parse first
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Try extracting the first JSON object with brace matching
+    depth = 0
+    start = None
+    for i, ch in enumerate(text):
+        if ch == '{':
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0 and start is not None:
+                try:
+                    return json.loads(text[start:i + 1])
+                except json.JSONDecodeError:
+                    start = None
+
+    # Last resort: regex for valid/response fields
+    valid_match = re.search(r'"valid"\s*:\s*(true|false)', text, re.IGNORECASE)
+    response_match = re.search(r'"response"\s*:\s*"(.*?)(?<!\\)"', text, re.DOTALL)
+    if valid_match:
+        return {
+            "valid": valid_match.group(1).lower() == "true",
+            "response": response_match.group(1) if response_match else text,
+        }
+
+    raise ValueError(f"Could not parse JSON from LLM response: {text[:200]}")
 
 
 def validation_agent(state: dict) -> dict:
@@ -97,15 +136,30 @@ def validation_agent(state: dict) -> dict:
         query_result=json.dumps(formatted_results, default=str),
     )
 
-    response = model.generate_content(
-        prompt,
-        generation_config=genai.types.GenerationConfig(
-            temperature=0.3,
-            response_mime_type="application/json",
-        ),
-    )
+    try:
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.3,
+                response_mime_type="application/json",
+            ),
+        )
 
-    result = json.loads(response.text)
+        result = _parse_json_safe(response.text)
+    except Exception as e:
+        logger.error("Validation LLM call or JSON parse failed: %s", e)
+        # Fall back to returning raw results as a formatted response
+        fallback_lines = []
+        for row_dict in formatted_results[:20]:
+            fallback_lines.append(", ".join(f"{k}: {v}" for k, v in row_dict.items()) if isinstance(row_dict, dict) else str(row_dict))
+        return {
+            **state,
+            "control": {
+                **state["control"],
+                "needs_retry": False,
+                "final_response": "Here are the results:\n\n" + "\n".join(f"- {line}" for line in fallback_lines),
+            },
+        }
 
     if result.get("valid", True):
         return {

@@ -61,10 +61,16 @@ RULES:
 - Date column in amazon_sales is named "Date" and is of type DATE. Use EXTRACT for filtering:
   e.g. EXTRACT(MONTH FROM "Date") IN (7,8,9) for Q3, EXTRACT(YEAR FROM "Date") = 2022 for year filtering.
   Do NOT use LIKE on Date — it is not a VARCHAR.
-- Date column in international_sales is named "DATE" and is of type DATE. Same rules apply — use EXTRACT, not LIKE.
+- Date column in international_sales is named "DATE" and is of type TIMESTAMP. Same rules apply — use EXTRACT, not LIKE.
+- DATA COVERAGE: amazon_sales spans March–June 2022 only (~4 months). international_sales spans June 2021–April 2022. Year-over-year comparisons are NOT possible with amazon_sales. If the user asks for data outside these ranges, inform them the data is not available.
+- amazon_sales contains ~7,800 rows with NULL Amount and ~12,800 rows with Qty=0 (cancelled/pending orders). Filter with "Amount IS NOT NULL AND Qty > 0" for revenue/quantity calculations unless the user asks about cancellations.
+- Use conversation history to resolve follow-up references like "what about last month?" or "show me more"
 
 Available tables:
 {schema_description}
+
+Conversation history:
+{chat_history}
 
 User's intent: {intent}
 Extracted entities: {entities}

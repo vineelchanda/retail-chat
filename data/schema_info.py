@@ -29,9 +29,9 @@ def get_schema_description(con: duckdb.DuckDBPyConnection) -> str:
             col_type = col[1]
             col_descriptions.append(f"{col_name} ({col_type})")
 
-            # Get sample distinct values for VARCHAR columns (helps LLM know valid values)
-            if "VARCHAR" in col_type:
-                try:
+            # Sample values based on column type
+            try:
+                if "VARCHAR" in col_type:
                     samples = con.execute(
                         f'SELECT DISTINCT "{col_name}" FROM {table_name} '
                         f'WHERE "{col_name}" IS NOT NULL LIMIT 5'
@@ -39,8 +39,25 @@ def get_schema_description(con: duckdb.DuckDBPyConnection) -> str:
                     if samples:
                         vals = [str(s[0]) for s in samples]
                         sample_values.append(f"  Sample {col_name}: {', '.join(vals)}")
-                except Exception:
-                    pass
+                elif "DATE" in col_type or "TIMESTAMP" in col_type:
+                    rng = con.execute(
+                        f'SELECT MIN("{col_name}"), MAX("{col_name}") '
+                        f'FROM {table_name} WHERE "{col_name}" IS NOT NULL'
+                    ).fetchone()
+                    if rng and rng[0] is not None:
+                        sample_values.append(f"  {col_name} range: {rng[0]} to {rng[1]}")
+                elif col_type in ("BIGINT", "INTEGER", "SMALLINT", "TINYINT",
+                                  "DOUBLE", "FLOAT", "HUGEINT") or "INT" in col_type:
+                    stats = con.execute(
+                        f'SELECT MIN("{col_name}"), MAX("{col_name}"), '
+                        f'ROUND(AVG("{col_name}"), 2) '
+                        f'FROM {table_name} WHERE "{col_name}" IS NOT NULL'
+                    ).fetchone()
+                    if stats and stats[0] is not None:
+                        sample_values.append(
+                            f"  {col_name} range: {stats[0]} to {stats[1]} (avg: {stats[2]})")
+            except Exception:
+                pass
 
         desc = f"Table: {table_name} ({row_count:,} rows)\n"
         desc += f"Columns: {', '.join(col_descriptions)}\n"

@@ -2,11 +2,11 @@
 Streamlit UI for the Retail Insights Assistant.
 
 HOW TO RUN:
-    export OPENAI_API_KEY="your-key"
+    export GEMINI_API_KEY="your-key"
     streamlit run app.py
 
 LAYOUT:
-- Sidebar: title, loaded tables info, Summarize button, Clear Chat button
+- Sidebar: title, loaded tables info, file uploader, Summarize button, Clear Chat button
 - Main area: chat message history + chat input box
 
 HOW IT CONNECTS:
@@ -16,9 +16,10 @@ HOW IT CONNECTS:
 """
 
 import logging
+import hashlib
 import streamlit as st
 from config import LANGCHAIN_PROJECT
-from data.loader import load_all_data
+from data.loader import load_all_data, load_uploaded_file
 from data.schema_info import get_schema_description
 from agents.graph import create_graph, run_query
 from prompts.templates import SUMMARIZATION_QUERY
@@ -68,6 +69,28 @@ with st.sidebar:
 
     st.markdown("---")
 
+    # File uploader for additional data
+    st.subheader("Upload Data")
+    uploaded_file = st.file_uploader(
+        "Upload a sales report",
+        type=["csv", "xlsx", "json", "txt"],
+        help="Supports CSV, Excel (.xlsx), JSON, and tab/comma-delimited text files",
+    )
+    if uploaded_file is not None:
+        file_key = f"uploaded_{uploaded_file.name}"
+        if file_key not in st.session_state:
+            try:
+                table_name = load_uploaded_file(st.session_state.con, uploaded_file)
+                st.session_state[file_key] = table_name
+                # Regenerate schema after new table
+                st.session_state.schema_desc = get_schema_description(st.session_state.con)
+                st.success(f"Loaded **{table_name}** from {uploaded_file.name}")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to load file: {e}")
+
+    st.markdown("---")
+
     # Summarize button
     if st.button("📋 Summarize All Data", use_container_width=True):
         st.session_state.trigger_summary = True
@@ -75,6 +98,7 @@ with st.sidebar:
     # Clear chat button
     if st.button("🗑️ Clear Chat", use_container_width=True):
         st.session_state.chat_history = []
+        st.session_state.query_cache = {}
         st.rerun()
 
     st.markdown("---")
@@ -114,8 +138,17 @@ if user_input:
     # Add to history
     st.session_state.chat_history.append({"role": "user", "content": user_input})
 
-    # Run the agent pipeline
-    with st.chat_message("assistant"):
+    # Check query cache
+    if "query_cache" not in st.session_state:
+        st.session_state.query_cache = {}
+    cache_key = hashlib.md5(user_input.strip().lower().encode()).hexdigest()
+    cached = st.session_state.query_cache.get(cache_key)
+
+    if cached:
+        result = cached
+        logger.info("Cache hit for query: %s", user_input[:50])
+    else:
+        # Run the agent pipeline
         with st.spinner("Analyzing your data..."):
             result = run_query(
                 graph=st.session_state.graph,
@@ -125,9 +158,12 @@ if user_input:
                 schema_description=st.session_state.schema_desc,
             )
 
-        logger.info("Query processed — intent: %s, blocked: %s", result.get("intent", "N/A"), result.get("response", "")[:50])
+        # Cache successful results
+        st.session_state.query_cache[cache_key] = result
+        logger.info("Query processed — intent: %s", result.get("intent", "N/A"))
 
-        # Display response
+    # Display response
+    with st.chat_message("assistant"):
         st.markdown(result["response"])
 
         # Show SQL in expander

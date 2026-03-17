@@ -19,9 +19,12 @@ focused job. This improves accuracy vs. asking one prompt to do everything.
 """
 
 import json
+import logging
 import google.generativeai as genai
 from config import GEMINI_API_KEY, GEMINI_MODEL
 from prompts.templates import QUERY_UNDERSTANDING_PROMPT
+
+logger = logging.getLogger(__name__)
 
 # Configure Gemini
 genai.configure(api_key=GEMINI_API_KEY)
@@ -45,22 +48,36 @@ def query_understanding_agent(state: dict) -> dict:
         user_query=state["input"]["user_query"],
     )
 
-    # Call Gemini
-    response = model.generate_content(
-        prompt,
-        generation_config=genai.types.GenerationConfig(
-            temperature=0,
-            response_mime_type="application/json",
-        ),
-    )
+    try:
+        # Call Gemini
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0,
+                response_mime_type="application/json",
+            ),
+        )
 
-    # Parse the JSON response
-    result = json.loads(response.text)
+        # Parse the JSON response
+        result = json.loads(response.text)
 
-    return {
-        **state,
-        "parsed": {
-            "intent": result.get("intent", "question"),
-            "entities": result.get("entities", {}),
-        },
-    }
+        return {
+            **state,
+            "parsed": {
+                "intent": result.get("intent", "question"),
+                "entities": result.get("entities", {}),
+            },
+        }
+    except Exception as e:
+        logger.error("Query understanding failed: %s", e)
+        return {
+            **state,
+            "parsed": {
+                "intent": "question",
+                "entities": {},
+            },
+            "result": {
+                **state["result"],
+                "error": f"Query understanding failed: {e}",
+            },
+        }
