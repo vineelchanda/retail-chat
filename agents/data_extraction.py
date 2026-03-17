@@ -48,18 +48,18 @@ def data_extraction_agent(state: dict) -> dict:
 
     # Build error context if this is a retry
     error_context = ""
-    if state.get("error"):
+    if state["result"].get("error"):
         error_context = (
-            f"PREVIOUS ATTEMPT FAILED. The SQL query:\n{state.get('sql_query', '')}\n"
-            f"Produced this error: {state['error']}\n"
+            f"PREVIOUS ATTEMPT FAILED. The SQL query:\n{state['result'].get('sql_query', '')}\n"
+            f"Produced this error: {state['result']['error']}\n"
             f"Please fix the query and try a different approach."
         )
 
     prompt = DATA_EXTRACTION_PROMPT.format(
-        schema_description=state["schema_description"],
-        intent=state["intent"],
-        entities=json.dumps(state["entities"]),
-        user_query=state["user_query"],
+        schema_description=state["context"]["schema_description"],
+        intent=state["parsed"]["intent"],
+        entities=json.dumps(state["parsed"]["entities"]),
+        user_query=state["input"]["user_query"],
         error_context=error_context,
     )
 
@@ -82,30 +82,39 @@ def data_extraction_agent(state: dict) -> dict:
     if sql_error:
         return {
             **state,
-            "sql_query": sql_query,
-            "query_result": None,
-            "column_names": [],
-            "error": sql_error,
+            "result": {
+                **state["result"],
+                "sql_query": sql_query,
+                "query_result": None,
+                "column_names": [],
+                "error": sql_error,
+            },
         }
 
     # Execute the SQL against DuckDB
-    con = state["db_connection"]
+    con = state["context"]["db_connection"]
     try:
         result = con.execute(sql_query).fetchall()
         # Also get column names for better formatting
         columns = [desc[0] for desc in con.description]
         return {
             **state,
-            "sql_query": sql_query,
-            "query_result": result,
-            "column_names": columns,
-            "error": None,
+            "result": {
+                **state["result"],
+                "sql_query": sql_query,
+                "query_result": result,
+                "column_names": columns,
+                "error": None,
+            },
         }
     except Exception as e:
         return {
             **state,
-            "sql_query": sql_query,
-            "query_result": None,
-            "column_names": [],
-            "error": str(e),
+            "result": {
+                **state["result"],
+                "sql_query": sql_query,
+                "query_result": None,
+                "column_names": [],
+                "error": str(e),
+            },
         }

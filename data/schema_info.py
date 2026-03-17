@@ -1,11 +1,6 @@
 """
 Builds a human-readable description of all DuckDB tables for LLM prompts.
 
-WHY THIS EXISTS:
-The LLM needs to know what tables and columns exist to write correct SQL.
-Instead of hardcoding this, we query DuckDB dynamically so the description
-is always accurate even if we change the loading logic.
-
 The output string looks like:
     Table: amazon_sales (128,975 rows)
     Columns: order_id (VARCHAR), Date (DATE), Status (VARCHAR), ...
@@ -53,5 +48,4 @@ def get_schema_description(con: duckdb.DuckDBPyConnection) -> str:
             desc += "\n".join(sample_values)
 
         descriptions.append(desc)
-
     return "\n\n".join(descriptions)

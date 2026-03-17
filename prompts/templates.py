@@ -58,8 +58,10 @@ RULES:
 - LIMIT results to 20 rows unless the user asks for all data
 - For summarization intent, write multiple CTEs to produce a multi-metric overview
 - If a question spans multiple tables, use appropriate JOINs or separate queries with UNION ALL
-- Date column in amazon_sales is named "Date" and stored as VARCHAR in format "MM-DD-YY"
-- Date column in international_sales is named "DATE" and stored as VARCHAR in format "MM-DD-YY"
+- Date column in amazon_sales is named "Date" and is of type DATE. Use EXTRACT for filtering:
+  e.g. EXTRACT(MONTH FROM "Date") IN (7,8,9) for Q3, EXTRACT(YEAR FROM "Date") = 2022 for year filtering.
+  Do NOT use LIKE on Date — it is not a VARCHAR.
+- Date column in international_sales is named "DATE" and is of type DATE. Same rules apply — use EXTRACT, not LIKE.
 
 Available tables:
 {schema_description}
@@ -96,8 +98,9 @@ Your tasks:
    - Lead with a direct answer to the question
    - Format numbers with commas and currency symbols (INR) where appropriate
    - Add a brief insight or observation if one is obvious
-   - Use bullet points or tables for multi-row results
+   - Use bullet points or tables for multi-row results — include ALL rows from query_result, do not truncate
    - Keep it concise — 2-4 sentences for simple queries, more for summaries
+   - IMPORTANT: If you mention how many rows are shown, count the ACTUAL rows in query_result — do NOT use the LIMIT value from the SQL
 
 User's question: {user_query}
 SQL query executed: {sql_query}

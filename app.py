@@ -78,7 +78,7 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("---")
-    st.caption("Built with LangGraph + DuckDB + OpenAI GPT-4o")
+    st.caption("Built with LangGraph + DuckDB + Google Gemini")
 
 # ──────────────────────────────────────
 # Main Chat Area

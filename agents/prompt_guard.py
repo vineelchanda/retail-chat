@@ -76,18 +76,21 @@ def check_patterns(query: str) -> Optional[str]:
 
 def prompt_guard_agent(state: dict) -> dict:
     """First node in the graph — validates user input for prompt injection."""
-    user_query = state.get("user_query", "")
+    user_query = state["input"].get("user_query", "")
 
     # Layer 1: Pattern-based check
     pattern_match = check_patterns(user_query)
     if pattern_match:
         return {
             **state,
-            "blocked": True,
-            "final_response": (
-                "I'm designed to answer questions about retail sales data only. "
-                "Your query was flagged as potentially unsafe. Please rephrase your question."
-            ),
+            "control": {
+                **state["control"],
+                "blocked": True,
+                "final_response": (
+                    "I'm designed to answer questions about retail sales data only. "
+                    "Your query was flagged as potentially unsafe. Please rephrase your question."
+                ),
+            },
         }
 
     # Layer 2: LLM-based classification for ambiguous inputs
@@ -107,15 +110,18 @@ def prompt_guard_agent(state: dict) -> dict:
         if not result.get("safe", True):
             return {
                 **state,
-                "blocked": True,
-                "final_response": (
-                    "I'm designed to answer questions about retail sales data only. "
-                    "I can't help with that request. Please ask me something about your sales, "
-                    "inventory, orders, or customers."
-                ),
+                "control": {
+                    **state["control"],
+                    "blocked": True,
+                    "final_response": (
+                        "I'm designed to answer questions about retail sales data only. "
+                        "I can't help with that request. Please ask me something about your sales, "
+                        "inventory, orders, or customers."
+                    ),
+                },
             }
     except Exception:
         # If the guard itself fails, let the query through rather than blocking legitimate queries
         pass
 
-    return {**state, "blocked": False}
+    return {**state, "control": {**state["control"], "blocked": False}}

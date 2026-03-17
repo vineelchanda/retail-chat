@@ -33,16 +33,16 @@ def query_understanding_agent(state: dict) -> dict:
 
     # Format chat history as readable text
     history_text = ""
-    if state.get("chat_history"):
-        for msg in state["chat_history"][-10:]:
+    if state["input"].get("chat_history"):
+        for msg in state["input"]["chat_history"][-10:]:
             role = msg["role"].capitalize()
             history_text += f"{role}: {msg['content']}\n"
 
     # Build the prompt with schema and history injected
     prompt = QUERY_UNDERSTANDING_PROMPT.format(
-        schema_description=state["schema_description"],
+        schema_description=state["context"]["schema_description"],
         chat_history=history_text or "No previous conversation.",
-        user_query=state["user_query"],
+        user_query=state["input"]["user_query"],
     )
 
     # Call Gemini
@@ -59,6 +59,8 @@ def query_understanding_agent(state: dict) -> dict:
 
     return {
         **state,
-        "intent": result.get("intent", "question"),
-        "entities": result.get("entities", {}),
+        "parsed": {
+            "intent": result.get("intent", "question"),
+            "entities": result.get("entities", {}),
+        },
     }
